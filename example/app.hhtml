@@ -1,0 +1,59 @@
+<app name="HyperHTML DSL v2">
+  <db type="sqlite" file="./demo.db" />
+
+  <schema>
+    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+    INSERT INTO users (name, email)
+    SELECT 'Sanskar', 'sanskar@example.com'
+    WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'sanskar@example.com');
+    INSERT INTO users (name, email)
+    SELECT 'Aditi', 'aditi@example.com'
+    WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'aditi@example.com');
+  </schema>
+
+  <query name="users">
+    SELECT id, name, email FROM users ORDER BY id DESC
+  </query>
+
+  <api route="/api/login" method="POST">
+    if (body.email === "admin@hyperhtml.dev" &amp;&amp; body.password === "1234") {
+      return { token: "demo-token", role: "admin" };
+    }
+    return { message: "Invalid credentials" };
+  </api>
+
+  <state name="count" value="0" />
+  <state name="title" value="HTML Extension Full-Stack DSL" />
+  <state name="loggedIn" value="true" />
+  <state name="username" value="Sanskar" />
+
+  <client>
+    <column gap="14px">
+      <text style="font-size: 28px; font-weight: 700;">{{title}}</text>
+      <text>Hello {{username}}, count is {{count}}</text>
+
+      <row gap="10px" center="y">
+        <input model="username" placeholder="Type your name" />
+        <button click="count = Number(count) + 1">Increase</button>
+      </row>
+
+      <if condition="loggedIn">
+        <box bg="#eef6ff" padding="12px" style="border:1px solid #d7e7fa;border-radius:10px;">
+          <text>Login state: true</text>
+        </box>
+        <else>
+          <box bg="#fff1f2" padding="12px" style="border:1px solid #fecdd3;border-radius:10px;">
+            <text>Login state: false</text>
+          </box>
+        </else>
+      </if>
+
+      <section style="margin-top: 8px;">
+        <text style="font-size:20px;font-weight:600;">Users From &lt;query&gt;</text>
+        <card each="user in users">
+          <text><strong>{{user.name}}</strong> - {{user.email}}</text>
+        </card>
+      </section>
+    </column>
+  </client>
+</app>

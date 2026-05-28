@@ -1,0 +1,368 @@
+<app name="HyperHTML Todo Auth App">
+  <db type="sqlite" file="./todo-app.db" />
+
+  <schema>
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_todos_user_id ON todos(user_id);
+  </schema>
+
+  <server>
+    <api route="/api/register" method="POST">
+      const name = String(body.name || "").trim();
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+
+      if (!name || !email || !password) {
+        return { ok: false, message: "Name, email and password are required" };
+      }
+
+      const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+      if (existing) {
+        return { ok: false, message: "Email already registered" };
+      }
+
+      const info = db
+        .prepare("INSERT INTO users (name, email, password) VALUES (?, ?, ?)")
+        .run(name, email, password);
+
+      const userId = Number(info.lastInsertRowid);
+      const token = "tok_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+      if (!state.sessions) {
+        state.sessions = {};
+      }
+      state.sessions[token] = userId;
+
+      return {
+        ok: true,
+        message: "Registered successfully",
+        token,
+        user: { id: userId, name, email },
+      };
+    </api>
+
+    <api route="/api/login" method="POST">
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+
+      if (!email || !password) {
+        return { ok: false, message: "Email and password are required" };
+      }
+
+      const user = db
+        .prepare("SELECT id, name, email FROM users WHERE email = ? AND password = ?")
+        .get(email, password);
+
+      if (!user) {
+        return { ok: false, message: "Invalid email or password" };
+      }
+
+      const token = "tok_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      if (!state.sessions) {
+        state.sessions = {};
+      }
+      state.sessions[token] = Number(user.id);
+
+      return {
+        ok: true,
+        message: "Login successful",
+        token,
+        user,
+      };
+    </api>
+
+    <api route="/api/logout" method="POST">
+      const token = String(body.token || "");
+      if (state.sessions &amp;&amp; token &amp;&amp; state.sessions[token]) {
+        delete state.sessions[token];
+      }
+      return { ok: true, message: "Logged out" };
+    </api>
+
+    <api route="/api/todos/list" method="POST">
+      const token = String(body.token || "");
+      if (!state.sessions || !state.sessions[token]) {
+        return { ok: false, message: "Unauthorized", todos: [] };
+      }
+
+      const userId = Number(state.sessions[token]);
+      const rows = db
+        .prepare("SELECT id, title, done, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY id DESC")
+        .all(userId);
+
+      return {
+        ok: true,
+        todos: rows.map((todo) => ({
+          id: Number(todo.id),
+          title: String(todo.title),
+          done: Number(todo.done) === 1,
+          created_at: todo.created_at,
+          updated_at: todo.updated_at,
+        })),
+      };
+    </api>
+
+    <api route="/api/todos/create" method="POST">
+      const token = String(body.token || "");
+      const title = String(body.title || "").trim();
+
+      if (!state.sessions || !state.sessions[token]) {
+        return { ok: false, message: "Unauthorized", todos: [] };
+      }
+      if (!title) {
+        return { ok: false, message: "Todo title is required" };
+      }
+
+      const userId = Number(state.sessions[token]);
+      db.prepare("INSERT INTO todos (user_id, title, done) VALUES (?, ?, 0)").run(userId, title);
+
+      const rows = db
+        .prepare("SELECT id, title, done, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY id DESC")
+        .all(userId);
+
+      return {
+        ok: true,
+        message: "Todo created",
+        todos: rows.map((todo) => ({
+          id: Number(todo.id),
+          title: String(todo.title),
+          done: Number(todo.done) === 1,
+          created_at: todo.created_at,
+          updated_at: todo.updated_at,
+        })),
+      };
+    </api>
+
+    <api route="/api/todos/update" method="POST">
+      const token = String(body.token || "");
+      const todoId = Number(body.id);
+      const title = String(body.title || "").trim();
+      const done = Boolean(body.done);
+
+      if (!state.sessions || !state.sessions[token]) {
+        return { ok: false, message: "Unauthorized", todos: [] };
+      }
+      if (!Number.isFinite(todoId) || todoId &lt;= 0) {
+        return { ok: false, message: "Invalid todo id" };
+      }
+      if (!title) {
+        return { ok: false, message: "Todo title is required" };
+      }
+
+      const userId = Number(state.sessions[token]);
+      const existing = db.prepare("SELECT id FROM todos WHERE id = ? AND user_id = ?").get(todoId, userId);
+      if (!existing) {
+        return { ok: false, message: "Todo not found" };
+      }
+
+      db.prepare("UPDATE todos SET title = ?, done = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
+        .run(title, done ? 1 : 0, todoId, userId);
+
+      const rows = db
+        .prepare("SELECT id, title, done, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY id DESC")
+        .all(userId);
+
+      return {
+        ok: true,
+        message: "Todo updated",
+        todos: rows.map((todo) => ({
+          id: Number(todo.id),
+          title: String(todo.title),
+          done: Number(todo.done) === 1,
+          created_at: todo.created_at,
+          updated_at: todo.updated_at,
+        })),
+      };
+    </api>
+
+    <api route="/api/todos/toggle" method="POST">
+      const token = String(body.token || "");
+      const todoId = Number(body.id);
+
+      if (!state.sessions || !state.sessions[token]) {
+        return { ok: false, message: "Unauthorized", todos: [] };
+      }
+      if (!Number.isFinite(todoId) || todoId &lt;= 0) {
+        return { ok: false, message: "Invalid todo id" };
+      }
+
+      const userId = Number(state.sessions[token]);
+      const todo = db.prepare("SELECT id, done FROM todos WHERE id = ? AND user_id = ?").get(todoId, userId);
+      if (!todo) {
+        return { ok: false, message: "Todo not found" };
+      }
+
+      const nextDone = Number(todo.done) === 1 ? 0 : 1;
+      db.prepare("UPDATE todos SET done = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
+        .run(nextDone, todoId, userId);
+
+      const rows = db
+        .prepare("SELECT id, title, done, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY id DESC")
+        .all(userId);
+
+      return {
+        ok: true,
+        message: "Todo status changed",
+        todos: rows.map((item) => ({
+          id: Number(item.id),
+          title: String(item.title),
+          done: Number(item.done) === 1,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+        })),
+      };
+    </api>
+
+    <api route="/api/todos/delete" method="POST">
+      const token = String(body.token || "");
+      const todoId = Number(body.id);
+
+      if (!state.sessions || !state.sessions[token]) {
+        return { ok: false, message: "Unauthorized", todos: [] };
+      }
+      if (!Number.isFinite(todoId) || todoId &lt;= 0) {
+        return { ok: false, message: "Invalid todo id" };
+      }
+
+      const userId = Number(state.sessions[token]);
+      db.prepare("DELETE FROM todos WHERE id = ? AND user_id = ?").run(todoId, userId);
+
+      const rows = db
+        .prepare("SELECT id, title, done, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY id DESC")
+        .all(userId);
+
+      return {
+        ok: true,
+        message: "Todo deleted",
+        todos: rows.map((todo) => ({
+          id: Number(todo.id),
+          title: String(todo.title),
+          done: Number(todo.done) === 1,
+          created_at: todo.created_at,
+          updated_at: todo.updated_at,
+        })),
+      };
+    </api>
+  </server>
+
+  <state name="authMode" value="login" />
+  <state name="registerName" value="" />
+  <state name="email" value="" />
+  <state name="password" value="" />
+  <state name="token" value="" />
+  <state name="userName" value="" />
+  <state name="todos" value="" />
+  <state name="newTodo" value="" />
+  <state name="editingId" value="0" />
+  <state name="editingText" value="" />
+  <state name="message" value="" />
+
+  <client>
+    <column gap="14px">
+      <text style="font-size: 30px; font-weight: 800;">HyperHTML Todo App</text>
+      <text>Single-file DSL: Register + Login + User-specific Todo CRUD + SQLite</text>
+
+      <if condition="message">
+        <box bg="#eef6ff" padding="10px" style="border:1px solid #bfdbfe;border-radius:10px;">
+          <text>{{message}}</text>
+        </box>
+      </if>
+
+      <if condition="!token">
+        <card>
+          <column gap="12px">
+            <row gap="10px">
+              <button click="authMode = 'login'; message = ''">Login</button>
+              <button click="authMode = 'register'; message = ''">Register</button>
+            </row>
+
+            <if condition="authMode === 'register'">
+              <column gap="10px">
+                <input model="registerName" placeholder="Full name" />
+                <input model="email" placeholder="Email" />
+                <input type="password" model="password" placeholder="Password" />
+                <button click="$post('/api/register', { name: registerName, email: email, password: password }).then((res) => { const out = res.data || {}; if (out.ok) { token = out.token; userName = out.user.name; registerName = ''; email = ''; password = ''; authMode = 'app'; message = out.message || 'Registered'; $post('/api/todos/list', { token: token }).then((listRes) => { const listOut = listRes.data || {}; todos = listOut.todos || []; }); } else { message = out.message || 'Register failed'; } }).catch(() => { message = 'Network error'; });">Create Account</button>
+              </column>
+              <else>
+                <column gap="10px">
+                  <input model="email" placeholder="Email" />
+                  <input type="password" model="password" placeholder="Password" />
+                  <button click="$post('/api/login', { email: email, password: password }).then((res) => { const out = res.data || {}; if (out.ok) { token = out.token; userName = out.user.name; password = ''; authMode = 'app'; message = out.message || 'Login success'; $post('/api/todos/list', { token: token }).then((listRes) => { const listOut = listRes.data || {}; todos = listOut.todos || []; }); } else { message = out.message || 'Login failed'; } }).catch(() => { message = 'Network error'; });">Login</button>
+                </column>
+              </else>
+            </if>
+          </column>
+        </card>
+      </if>
+
+      <if condition="token">
+        <card>
+          <row center="y" style="justify-content:space-between;">
+            <text style="font-weight:700;">Welcome, {{userName}}</text>
+            <row gap="8px">
+              <button click="$post('/api/todos/list', { token: token }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; message = 'Todos refreshed'; } else { message = out.message || 'Failed to refresh'; } });">Refresh</button>
+              <button click="$post('/api/logout', { token: token }).then(() => { token = ''; todos = []; newTodo = ''; editingId = 0; editingText = ''; authMode = 'login'; message = 'Logged out'; });">Logout</button>
+            </row>
+          </row>
+        </card>
+
+        <card>
+          <column gap="10px">
+            <text style="font-weight:700;">Create Todo</text>
+            <row gap="8px">
+              <input model="newTodo" placeholder="Write a todo..." style="flex:1;" />
+              <button click="if (!newTodo.trim()) { message = 'Todo title is required'; } else { $post('/api/todos/create', { token: token, title: newTodo }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; newTodo = ''; message = out.message || 'Todo created'; } else { message = out.message || 'Create failed'; } }).catch(() => { message = 'Network error'; }); }">Add</button>
+            </row>
+          </column>
+        </card>
+
+        <if condition="Array.isArray(todos) &amp;&amp; todos.length === 0">
+          <box bg="#fff7ed" padding="10px" style="border:1px solid #fed7aa;border-radius:10px;">
+            <text>No todos yet. Add your first task.</text>
+          </box>
+        </if>
+
+        <card each="todo in todos">
+          <column gap="10px">
+            <row center="y" style="justify-content:space-between;">
+              <column>
+                <text style="font-weight:700;">{{todo.title}}</text>
+                <text>Status: {{todo.done ? 'Done' : 'Pending'}}</text>
+              </column>
+              <row gap="8px">
+                <button click="$post('/api/todos/toggle', { token: token, id: todo.id }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; message = out.message || 'Updated'; } else { message = out.message || 'Toggle failed'; } }).catch(() => { message = 'Network error'; });">{{todo.done ? 'Mark Pending' : 'Mark Done'}}</button>
+                <button click="editingId = todo.id; editingText = todo.title">Edit</button>
+                <button click="$post('/api/todos/delete', { token: token, id: todo.id }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; message = out.message || 'Deleted'; if (editingId === todo.id) { editingId = 0; editingText = ''; } } else { message = out.message || 'Delete failed'; } }).catch(() => { message = 'Network error'; });">Delete</button>
+              </row>
+            </row>
+
+            <if condition="editingId === todo.id">
+              <row gap="8px">
+                <input model="editingText" style="flex:1;" />
+                <button click="if (!editingText.trim()) { message = 'Edit title cannot be empty'; } else { $post('/api/todos/update', { token: token, id: todo.id, title: editingText, done: todo.done }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; editingId = 0; editingText = ''; message = out.message || 'Saved'; } else { message = out.message || 'Update failed'; } }).catch(() => { message = 'Network error'; }); }">Save</button>
+                <button click="editingId = 0; editingText = ''">Cancel</button>
+              </row>
+            </if>
+          </column>
+        </card>
+      </if>
+    </column>
+  </client>
+</app>
