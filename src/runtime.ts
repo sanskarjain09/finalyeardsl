@@ -163,6 +163,77 @@ function buildClientHtml(ast: AppAst): string {
         let queryLoadPromise = null;
         const queryCache = {};
 
+        function isTextEntryElement(el) {
+          if (!el || !el.tagName) {
+            return false;
+          }
+          const tag = el.tagName.toLowerCase();
+          if (tag === "textarea") {
+            return true;
+          }
+          if (tag !== "input") {
+            return false;
+          }
+          const type = String(el.type || "text").toLowerCase();
+          return type === "text" || type === "search" || type === "url" || type === "tel" || type === "password" || type === "email";
+        }
+
+        function toBooleanAttr(value) {
+          const normalized = String(value || "").trim().toLowerCase();
+          return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on" || normalized === "checked";
+        }
+
+        function captureFocusSnapshot() {
+          const mount = document.getElementById("app");
+          const active = document.activeElement;
+          if (!mount || !active || !mount.contains(active)) {
+            return null;
+          }
+
+          const key = active.getAttribute && active.getAttribute("data-dsl-focus-key");
+          if (!key) {
+            return null;
+          }
+
+          const snapshot = { key };
+          if (isTextEntryElement(active)) {
+            snapshot.selectionStart = active.selectionStart;
+            snapshot.selectionEnd = active.selectionEnd;
+          }
+          return snapshot;
+        }
+
+        function restoreFocusSnapshot(snapshot) {
+          if (!snapshot || !snapshot.key) {
+            return;
+          }
+          const mount = document.getElementById("app");
+          if (!mount) {
+            return;
+          }
+
+          const candidates = mount.querySelectorAll("[data-dsl-focus-key]");
+          let target = null;
+          candidates.forEach(function (el) {
+            if (!target && el.getAttribute("data-dsl-focus-key") === snapshot.key) {
+              target = el;
+            }
+          });
+
+          if (!target || typeof target.focus !== "function") {
+            return;
+          }
+
+          target.focus({ preventScroll: true });
+          if (isTextEntryElement(target) && typeof snapshot.selectionStart === "number" && typeof snapshot.selectionEnd === "number") {
+            try {
+              target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+            } catch (_error) {
+              // ignore unsupported selection restoration types
+            }
+          }
+        }
+
         async function postApi(route, payload) {
           const response = await fetch(route, {
             method: "POST",
@@ -476,8 +547,26 @@ function buildClientHtml(ast: AppAst): string {
               return;
             }
 
+            if (name === "change" || name === "input" || name === "submit") {
+              const eventName = name;
+              el.addEventListener(eventName, function (event) {
+                if (eventName === "submit" && event && typeof event.preventDefault === "function") {
+                  event.preventDefault();
+                }
+                try {
+                  runStatement(interpolatedValue, scope, event);
+                } catch (error) {
+                  console.error(eventName + " handler failed:", error);
+                }
+              });
+              return;
+            }
+
             if (name === "model") {
               const modelName = interpolatedValue.trim();
+              if (modelName) {
+                el.setAttribute("data-dsl-focus-key", "model:" + modelName);
+              }
               if (targetTagName === "input") {
                 const type = (sourceEl.getAttribute("type") || "text").toLowerCase();
                 if (type === "checkbox") {
@@ -498,6 +587,9 @@ function buildClientHtml(ast: AppAst): string {
 
             if (name === "class" || name === "style" || name === "id" || name === "value" || name === "name") {
               el.setAttribute(name, interpolatedValue);
+              if (name === "id" && !el.getAttribute("data-dsl-focus-key") && (targetTagName === "input" || targetTagName === "textarea" || targetTagName === "select")) {
+                el.setAttribute("data-dsl-focus-key", "id:" + interpolatedValue);
+              }
               return;
             }
 
@@ -505,7 +597,20 @@ function buildClientHtml(ast: AppAst): string {
               return;
             }
 
-            if (name === "src" || name === "href" || name === "width" || name === "height" || name === "type" || name.startsWith("data-")) {
+            if (name === "checked") {
+              if (targetTagName === "input") {
+                const isChecked = toBooleanAttr(interpolatedValue);
+                el.checked = isChecked;
+                if (isChecked) {
+                  el.setAttribute("checked", "checked");
+                } else {
+                  el.removeAttribute("checked");
+                }
+              }
+              return;
+            }
+
+            if (name === "src" || name === "href" || name === "width" || name === "height" || name === "type" || name === "placeholder" || name.startsWith("data-")) {
               el.setAttribute(name, interpolatedValue);
               return;
             }
@@ -558,6 +663,7 @@ function buildClientHtml(ast: AppAst): string {
           isRendering = true;
           try {
             await ensureQueryCache();
+            const focusSnapshot = captureFocusSnapshot();
 
             const mount = document.getElementById("app");
             const templateEl = document.createElement("template");
@@ -569,6 +675,7 @@ function buildClientHtml(ast: AppAst): string {
             });
 
             mount.replaceChildren(fragment);
+            restoreFocusSnapshot(focusSnapshot);
           } finally {
             isRendering = false;
           }

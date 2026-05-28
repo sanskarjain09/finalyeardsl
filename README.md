@@ -1,59 +1,78 @@
-# HyperHTML Prototype (DSL MVP v3)
+# todoDSL
 
-A tag-based HTML extension DSL where one `.hhtml` file can define:
+`todoDSL` is your HTML-extension DSL runtime where one `.st` file can contain:
 
-- UI tags (`<text>`, `<row>`, `<column>`, `<box>`, `<card>`, `<button>`, `<input>`)
-- Logic (`<if>`, `<else>`, `<for>`, and inline `if` / `each` attributes)
-- State (`<state name="..." value="..."/>`)
-- Backend APIs (`<api route="..." method="...">`)
-- Database + schema (`<db>`, `<schema>`)
+- frontend UI tags
+- backend APIs
+- database schema
+- auth logic
+- per-user CRUD flows
 
-## Run the full Todo app
+This project already includes a complete Todo app with login/register and SQLite persistence.
+
+## Folder
+
+- Project path: `/Users/sanskarjain/Desktop/todoDSL`
+- Full Todo app DSL file: `/Users/sanskarjain/Desktop/todoDSL/example/todo-app.st`
+- SQLite DB created at runtime: `/Users/sanskarjain/Desktop/todoDSL/example/todo-app.db`
+
+## Install
 
 ```bash
+cd /Users/sanskarjain/Desktop/todoDSL
 npm install
-npm run dev -- example/todo-app.hhtml 3000
+npm run build
 ```
 
-Open `http://localhost:3000`.
+## Use From Anywhere (Global CLI)
 
-This single DSL file includes:
+```bash
+cd /Users/sanskarjain/Desktop/todoDSL
+npm run link:global
+```
 
-- User register/login/logout
-- Per-user SQLite persistence
-- Todo CRUD from frontend (`create`, `list`, `update`, `toggle`, `delete`)
+Then from **any folder**:
 
-Database file gets created automatically at:
+```bash
+tododsl run /absolute/path/to/app.st 3000
+```
 
-- `example/todo-app.db`
+or:
 
-## Also available
+```bash
+tododsl /absolute/path/to/app.st 3000
+```
 
-- `example/app.hhtml` (smaller syntax demo)
+## Run Included Todo Website
 
-## Supported Tags (MVP)
+```bash
+tododsl run /Users/sanskarjain/Desktop/todoDSL/example/todo-app.st 3000
+```
 
-- Root/System: `<app>`, `<client>`, `<server>`, `<api>`, `<db>`, `<query>`, `<state>`
-- UI: `<text>`, `<box>`, `<row>`, `<column>`, `<button>`, `<input>`, `<card>`, plus native HTML tags
-- Logic: `<if>`, `<else>`, `<for each="...">`
+Open:
 
-## Supported Attributes (MVP)
+- `http://localhost:3000`
 
-- Reactivity: `click`, `model`, `if`, `each`
-- Common: `id`, `class`, `style`, `name`, `value`, `src`, `href`, `width`, `height`, `type`
-- Style shortcuts: `bg`, `color`, `padding`, `margin`, `gap`, `center`
+Features in this website:
 
-## Runtime helpers in expressions
+- Register
+- Login / Logout
+- User-specific todo list
+- Create / Read / Update / Toggle / Delete todos
+- SQLite database auto-create and persistence
 
-- `$post('/api/route', payload)` for JSON POST requests
-- `{{expression}}` interpolation support
+## Create Your Own DSL Website Anywhere
 
-## Notes
+1. Create any file, e.g. `/Users/sanskarjain/Desktop/myapps/shop.st`.
+2. Write your `<app> ... </app>` DSL.
+3. Run:
 
-This is an experimental compiler/runtime. Next hardening steps:
+```bash
+tododsl run /Users/sanskarjain/Desktop/myapps/shop.st 4000
+```
 
-1. Secure expression sandbox (replace raw `new Function`).
-2. Password hashing + proper auth tokens.
-3. Role-based access and route guards.
-4. Hot reload and multi-file component imports.
-5. Type-checking for DSL blocks.
+## CLI Help
+
+```bash
+tododsl --help
+```
