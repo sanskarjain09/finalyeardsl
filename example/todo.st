@@ -1,5 +1,5 @@
-<app name="HyperHTML Todo Auth App">
-  <db type="sqlite" file="./todo-app.db" />
+<app name="TTS Todo App">
+  <db type="sqlite" file="./todo.db" />
 
   <schema>
     CREATE TABLE IF NOT EXISTS users (
@@ -276,8 +276,8 @@
 
   <client>
     <column gap="14px">
-      <text style="font-size: 30px; font-weight: 800;">HyperHTML Todo App</text>
-      <text>Single-file DSL: Register + Login + User-specific Todo CRUD + SQLite</text>
+      <text style="font-size: 30px; font-weight: 800;">TTS Todo</text>
+      <text>Register, login, add todos, see your list, mark done, and remove with x.</text>
 
       <if condition="message">
         <box bg="#eef6ff" padding="10px" style="border:1px solid #bfdbfe;border-radius:10px;">
@@ -339,19 +339,19 @@
           </box>
         </if>
 
-        <card each="todo in todos">
+        <card each="todo in todos" style="padding:12px;border:1px solid #dbe4f0;border-radius:12px;margin-bottom:10px;background:#ffffff;">
           <column gap="10px">
-            <row center="y" style="justify-content:space-between;">
-              <row center="y" gap="10px">
+            <row center="y" gap="10px" style="justify-content:space-between;">
+              <row center="y" gap="10px" style="min-width:0;flex:1;">
                 <input type="checkbox" checked="{{todo.done}}" click="$post('/api/todos/toggle', { token: token, id: todo.id }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; message = out.message || 'Updated'; } else { message = out.message || 'Toggle failed'; } }).catch(() => { message = 'Network error'; });" />
-                <column>
+                <column style="min-width:0;flex:1;">
                   <text style="font-weight:700;{{todo.done ? 'text-decoration:line-through;opacity:0.65;' : ''}}">{{todo.title}}</text>
                   <text>Status: {{todo.done ? 'Completed' : 'Pending'}}</text>
                 </column>
               </row>
-              <row gap="8px">
+              <row gap="8px" center="y">
                 <button click="editingId = todo.id; editingText = todo.title">Edit</button>
-                <button click="$post('/api/todos/delete', { token: token, id: todo.id }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; message = out.message || 'Deleted'; if (editingId === todo.id) { editingId = 0; editingText = ''; } } else { message = out.message || 'Delete failed'; } }).catch(() => { message = 'Network error'; });">Delete</button>
+                <button title="Delete todo" click="$post('/api/todos/delete', { token: token, id: todo.id }).then((res) => { const out = res.data || {}; if (out.ok) { todos = out.todos || []; message = out.message || 'Deleted'; if (editingId === todo.id) { editingId = 0; editingText = ''; } } else { message = out.message || 'Delete failed'; } }).catch(() => { message = 'Network error'; });" style="width:36px;height:36px;padding:0;border-radius:50%;background:#fee2e2;color:#991b1b;font-size:18px;line-height:1;">x</button>
               </row>
             </row>
 
